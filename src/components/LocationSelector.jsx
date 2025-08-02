@@ -1,6 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import LocationSearch from './LocationSearch';
 import MapView from './MapView';
+import EnvironmentalDataPanel from './EnvironmentalDataPanel';
+import { AnimatePresence, motion } from 'framer-motion';
+
 
 const LocationSelector = () => {
     const [location, setLocation] = useState({
@@ -10,6 +13,9 @@ const LocationSelector = () => {
     });
 
     const [userInteracted, setUserInteracted] = useState(false);
+    const [envdata, setenvData] = useState(null);
+    const panelRef = useRef(null);
+
 
     async function getLocationName(lat, lon) {
         const response = await fetch(
@@ -89,7 +95,7 @@ const LocationSelector = () => {
 
             console.log("Sending to backend:", payload);
 
-            const response = await fetch("http://127.0.0.1:8000/get-data", {
+            const response = await fetch("http://127.0.0.1:8001/get-data", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -106,6 +112,13 @@ const LocationSelector = () => {
             console.log("Received from backend:", data);
 
             // Your logic goes here (display data, update UI, etc.)
+            setenvData(data);
+
+            // Scroll after small delay to ensure DOM renders the panel
+            setTimeout(() => {
+                panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }, 100);
+
         } catch (error) {
             console.error("Bruh backend broke:", error.message);
             alert("Something went wrong! Check the console for details.");
@@ -161,6 +174,31 @@ const LocationSelector = () => {
                     Confirm Location
                 </button>
             </div>
+
+            <AnimatePresence>
+                {envdata && (
+                    <motion.div
+                    ref={panelRef}
+                        initial={{ opacity: 0, y: 40 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 40 }}
+                        transition={{ duration: 0.6, ease: "easeOut" }}
+                        key="env-panel"
+                    >
+                        <EnvironmentalDataPanel
+                            location={location.name}
+                            temp={envdata.temperature_K}
+                            rain={envdata.rainfall_mm}
+                            elevation={envdata.elevation_m}
+                            ph={envdata.soil.pH}
+                            sand={envdata.soil["sand_%"]}
+                            clay={envdata.soil["sand_%"]}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+
         </div>
     );
 };
