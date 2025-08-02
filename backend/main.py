@@ -269,16 +269,32 @@ def get_data(location: Location):
                 scale=5000
             ).getInfo()
 
-        # Temperature
-        temperature_data = ee.ImageCollection('ECMWF/ERA5/DAILY') \
-            .select('mean_2m_air_temperature') \
-            .filterBounds(point) \
-            .filterDate('2022-01-01', '2023-01-01') \
-            .mean().reduceRegion(
-                reducer=ee.Reducer.mean(),
-                geometry=point,
-                scale=10000
-            ).getInfo()
+        # Temperature   
+        # temperature_data = ee.ImageCollection('ECMWF/ERA5/DAILY') \
+        #     .select('mean_2m_air_temperature') \
+        #     .filterBounds(point) \
+        #     .filterDate('2022-01-01', '2023-01-01') \
+        #     .mean().reduceRegion(
+        #         reducer=ee.Reducer.mean(),
+        #         geometry=point,
+        #         scale=10000
+        #     ).getInfo()
+        # print("TEMP DEBUG:", temperature_data)
+
+        collection = ee.ImageCollection("ECMWF/ERA5/DAILY") \
+        .filterDate("2022-01-01", "2023-01-01") \
+        .select("mean_2m_air_temperature")
+
+        point = ee.Geometry.Point([lon, lat]).buffer(10000)
+
+        image = collection.mean()
+
+        temperature = image.reduceRegion(
+        reducer=ee.Reducer.mean(),
+        geometry=point,
+        scale=1000,
+        maxPixels=1e13
+        ).getInfo()
 
         # Elevation
         elevation_data = ee.Image('USGS/SRTMGL1_003') \
@@ -320,7 +336,7 @@ def get_data(location: Location):
                 clay_value = mean_val
 
         # Parse Temperature & Rainfall & Elevation safely
-        temp_value = temperature_data.get("mean_2m_air_temperature", None)
+        temp_value = temperature.get("mean_2m_air_temperature", None)
         rainfall_value = rainfall_data.get("precipitation", None)
         elevation_value = elevation_data.get("elevation", None)
 
