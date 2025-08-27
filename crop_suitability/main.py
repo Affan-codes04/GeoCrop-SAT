@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd
 
-# Make sure this file is in the same directory
-from fuzzyCropSuitabilityNew import CropSuitabilitySystem
+# Import your system
+from fuzzyCropSuitabilityNew import CropSuitabilitySystem, REMEDIAL_MEASURES, classify_suitability
 
 app = FastAPI(
     title="Crop Suitability API",
@@ -11,18 +13,24 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Initialize the system with your dataset path
-# This is loaded once when the server starts
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or specify frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# Initialize system at startup
 try:
     system = CropSuitabilitySystem("indian_crops_filtered.csv")
     print("Crop Suitability System initialized successfully.")
 except Exception as e:
     print(f"FATAL: Could not initialize CropSuitabilitySystem. Error: {e}")
-    # In a real application, you might want to prevent the server from starting
-    # if the core system fails to load.
     system = None
 
-# Pydantic model for request body, now with optional fields
+# Models
 class EnvironmentInput(BaseModel):
     temperature: Optional[float] = None
     rainfall: Optional[float] = None
@@ -41,49 +49,78 @@ class CropCheckRequest(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     if system is None:
-        # This is a simple way to handle the case where initialization failed.
-        # The server will run but endpoints will return an error.
         print("WARNING: System is not available. API endpoints will fail.")
+
+@app.get("/crops")
+@app.get("/crops/")
+def get_crops():
+    try:
+        df = pd.read_csv("indian_crops_filtered.csv")
+        crop_names = []
+
+        for entry in df["COMNAME"].dropna().tolist():
+            # take only the first name before the comma
+            first_name = entry.split(",")[0].strip()
+            crop_names.append(first_name)
+
+        return {"crops": crop_names}
+    except Exception as e:
+        import traceback
+        print("ERROR loading crops:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error loading crops.csv: {e}")
+
+
 
 @app.post("/suggest_crops/", tags=["Crop Suggestions"])
 def suggest_crops(env: EnvironmentInput):
-    """
-    Accepts environmental parameters and returns a list of top suitable crops.
-    You can omit parameters you don't have data for.
-    """
     if system is None:
         raise HTTPException(status_code=503, detail="System not initialized. Check server logs.")
     try:
-        # Create a dictionary, excluding keys with None values
         env_params = {k: v for k, v in env.dict().items() if v is not None}
         if not env_params:
             raise HTTPException(status_code=400, detail="At least one environmental parameter must be provided.")
-        
+
         result = system.find_suitable_crops(env_params)
         return {"recommended_crops": result}
     except Exception as e:
-        # Log the full error for debugging
         print(f"Error in /suggest_crops: {e}")
         raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
 
 @app.post("/check_crop/", tags=["Crop Details"])
 def check_crop(req: CropCheckRequest):
-    """
-    Provides a detailed suitability analysis for a specific crop in a given environment.
-    """
     if system is None:
         raise HTTPException(status_code=503, detail="System not initialized. Check server logs.")
     try:
         env_params = {k: v for k, v in req.environment.dict().items() if v is not None}
         result = system.get_crop_details(req.crop_name, env_params=env_params)
         if 'error' in result:
-             raise HTTPException(status_code=404, detail=result['error'])
-        return result
+            raise HTTPException(status_code=404, detail=result['error'])
+
+        # Extract score and limiting factor
+        score = result.get('score', 0)
+        limiting = result.get('limiting_factor', '')
+
+        # Add suitability class and remedial measure
+        suitability_class = classify_suitability(score)
+        remedial = REMEDIAL_MEASURES.get(limiting, "No specific suggestion available.")
+
+        # Add them to the result
+        result['class'] = suitability_class
+        result['suggested_remedial_action'] = remedial
+
+        return {
+            "crop_name": req.crop_name,
+            "score": score,
+            "class": suitability_class,
+            "limiting_factor": limiting,
+            "suggested_remedial_action": remedial,
+            "missing_params": result.get("missing_params_info", {})
+        }
+
     except Exception as e:
         print(f"Error in /check_crop: {e}")
         raise HTTPException(status_code=500, detail=f"An internal server error occurred: {e}")
 
 @app.get("/", tags=["Root"])
 def read_root():
-    """A simple root endpoint to confirm the API is running."""
     return {"message": "Welcome to the Crop Suitability API. Go to /docs to see the endpoints."}
