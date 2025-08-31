@@ -304,36 +304,68 @@ def get_data(location: Location):
                 scale=30
             ).getInfo()
 
-        # Soil Data (from ISRIC SoilGrids)
-        soil_url = (
-            f"https://rest.isric.org/soilgrids/v2.0/properties/query"
-            f"?lon={lon}&lat={lat}&property=phh2o&property=sand&property=clay"
-            f"&depth=0-5cm&value=mean"
-        )
-        soil_response = requests.get(soil_url)
-        if not soil_response.ok:
-            raise HTTPException(status_code=502, detail="Failed to fetch soil data")
+        # # Soil Data (from ISRIC SoilGrids)
+        # soil_url = (
+        #     f"https://rest.isric.org/soilgrids/v2.0/properties/query"
+        #     f"?lon={lon}&lat={lat}&property=phh2o&property=sand&property=clay"
+        #     f"&depth=0-5cm&value=mean"
+        # )
+        # soil_response = requests.get(soil_url)
+        # if not soil_response.ok:
+        #     raise HTTPException(status_code=502, detail="Failed to fetch soil data")
 
-        soil_json = soil_response.json()
+        # soil_json = soil_response.json()
 
-        # Parse Soil Data
-        ph_value = None
-        sand_value = None
-        clay_value = None
+        # # Parse Soil Data
+        # ph_value = None
+        # sand_value = None
+        # clay_value = None
 
-        layers = soil_json.get("properties", {}).get("layers", [])
-        for layer in layers:
-            name = layer.get("name")
-            mean_val = layer.get("depths", [{}])[0].get("values", {}).get("mean")
-            if mean_val is not None:
-                mean_val = mean_val / 10  # Convert scale
+        # layers = soil_json.get("properties", {}).get("layers", [])
+        # for layer in layers:
+        #     name = layer.get("name")
+        #     mean_val = layer.get("depths", [{}])[0].get("values", {}).get("mean")
+        #     if mean_val is not None:
+        #         mean_val = mean_val / 10  # Convert scale
 
-            if name == "phh2o":
-                ph_value = mean_val
-            elif name == "sand":
-                sand_value = mean_val
-            elif name == "clay":
-                clay_value = mean_val
+        #     if name == "phh2o":
+        #         ph_value = mean_val
+        #     elif name == "sand":
+        #         sand_value = mean_val
+        #     elif name == "clay":
+        #         clay_value = mean_val
+
+                # Soil Data (from ISRIC SoilGrids)
+        ph_value, sand_value, clay_value = None, None, None
+        try:
+            soil_url = (
+                f"https://rest.isric.org/soilgrids/v2.0/properties/query"
+                f"?lon={lon}&lat={lat}&property=phh2o&property=sand&property=clay"
+                f"&depth=0-5cm&value=mean"
+            )
+            soil_response = requests.get(soil_url, timeout=10)
+            soil_response.raise_for_status()  # raise HTTPError if not 200
+
+            soil_json = soil_response.json()
+
+            layers = soil_json.get("properties", {}).get("layers", [])
+            for layer in layers:
+                name = layer.get("name")
+                mean_val = layer.get("depths", [{}])[0].get("values", {}).get("mean")
+                if mean_val is not None:
+                    mean_val = mean_val / 10  # Convert scale
+
+                if name == "phh2o":
+                    ph_value = mean_val
+                elif name == "sand":
+                    sand_value = mean_val
+                elif name == "clay":
+                    clay_value = mean_val
+
+        except Exception as soil_err:
+            print(f"⚠️ Soil data fetch failed: {soil_err}")
+            # don’t raise — just keep soil values as None
+
 
         # Parse Temperature & Rainfall & Elevation safely
         temp_value = temperature.get("mean_2m_air_temperature", None)
