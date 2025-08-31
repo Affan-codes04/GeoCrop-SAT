@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from typing import Optional
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
+from fastapi.staticfiles import StaticFiles
+
 
 # Import your system
 from fuzzyCropSuitabilityNew import CropSuitabilitySystem, REMEDIAL_MEASURES, classify_suitability
@@ -21,6 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Initialize system at startup
 try:
@@ -68,6 +71,78 @@ def get_crops():
         import traceback
         print("ERROR loading crops:", traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error loading crops.csv: {e}")
+
+
+@app.get("/crop-params/{crop_name}", tags=["Crop Parameters"])
+def get_crop_params(crop_name: str):
+    """
+    Fetch optimal temperature, rainfall, and pH ranges for a given crop
+    from indian_crops_filtered.csv
+    """
+    try:
+        df = pd.read_csv("indian_crops_filtered.csv")
+
+        # Try matching crop name (case insensitive, first name in COMNAME col)
+        match = None
+        for entry in df["COMNAME"].dropna().tolist():
+            first_name = entry.split(",")[0].strip().lower()
+            if first_name == crop_name.lower():
+                match = df[df["COMNAME"] == entry].iloc[0]
+                break
+
+        if match is None:
+            raise HTTPException(status_code=404, detail=f"Crop '{crop_name}' not found in dataset.")
+
+        # Extract parameters (adjust column names to your CSV!)
+        crop_params = {
+            "temperature": [match["TMIN"], match["TMAX"]],
+            "rainfall": [match["RMIN"], match["RMAX"]],
+            "ph": [match["PHMIN"], match["PHMAX"]],
+        }
+
+        return {"crop": crop_name, "params": crop_params}
+
+    except Exception as e:
+        import traceback
+        print("ERROR in /crop-params:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error fetching crop parameters: {e}")
+
+
+@app.get("/suitability/{crop_name}", tags=["Suitability Map"])
+def get_crop_suitability_map(crop_name: str):
+    """
+    Return suitability scores for each Indian state for the given crop.
+    Uses the fuzzy logic system to calculate based on average state parameters.
+    """
+    if system is None:
+        raise HTTPException(status_code=503, detail="System not initialized. Check server logs.")
+    
+    try:
+        # Load state-level climate data (you need a CSV like: state, temperature, rainfall, ph)
+        df = pd.read_csv("statewise_env_data.csv")  # <-- create this file
+
+        results = {}
+        for _, row in df.iterrows():
+            env_params = {
+                "temperature": row["temperature"],
+                "rainfall": row["rainfall"],
+                "ph": row["ph"]
+            }
+
+            # Use your existing system logic
+            crop_result = system.get_crop_details(crop_name, env_params=env_params)
+
+            if "score" in crop_result:
+                results[row["state"]] = crop_result["score"]
+            else:
+                results[row["state"]] = 0
+
+        return {"crop": crop_name, "suitability_scores": results}
+
+    except Exception as e:
+        import traceback
+        print("ERROR in /suitability:", traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error generating suitability map: {e}")
 
 
 

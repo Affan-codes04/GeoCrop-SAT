@@ -6,8 +6,21 @@ import warnings
 # Suppress specific non-critical warnings from skfuzzy
 warnings.filterwarnings("ignore", message="Bad anchor points provided.*", category=RuntimeWarning)
 
+REMEDIAL_MEASURES = {
+                "pH": "Apply lime to increase soil pH or sulfur to decrease it.",
+                "Temperature": "Choose appropriate planting season or select heat-tolerant varieties.",
+                "Rainfall": "Install irrigation or drainage systems as needed.",
+                "Altitude": "Select altitude-suitable varieties or switch crops.",
+                "Fertility": "Add organic compost or fertilizers.",
+                "Salinity": "Use salt-tolerant crops or apply gypsum.",
+                "Drainage": "Improve drainage using raised beds or channels.",
+                "Depth": "Use shallow-rooted crop varieties.",
+                "Texture": "Add organic matter to improve soil structure.",
+}
+
 class DataManager:
     """Handles all data loading, cleaning, and access operations."""
+    
     def __init__(self, dataset_path):
         self.df = self._load_and_clean_data(dataset_path)
 
@@ -284,16 +297,5 @@ if __name__ == '__main__':
                 if missing_crop: print(f"    - From Crop's Data: {', '.join(missing_crop)}")
                 print("    (Note: These were excluded from the calculation, which may affect the final score.)")
 
-            REMEDIAL_MEASURES = {
-                "pH": "Apply lime to increase soil pH or sulfur to decrease it.",
-                "Temperature": "Choose appropriate planting season or select heat-tolerant varieties.",
-                "Rainfall": "Install irrigation or drainage systems as needed.",
-                "Altitude": "Select altitude-suitable varieties or switch crops.",
-                "Fertility": "Add organic compost or fertilizers.",
-                "Salinity": "Use salt-tolerant crops or apply gypsum.",
-                "Drainage": "Improve drainage using raised beds or channels.",
-                "Depth": "Use shallow-rooted crop varieties.",
-                "Texture": "Add organic matter to improve soil structure.",
-            }
             remedial = REMEDIAL_MEASURES.get(limiting, "No specific suggestion available.")
             print(f"  - Suggested Remedial Action: {remedial}")
